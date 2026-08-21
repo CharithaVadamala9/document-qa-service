@@ -58,9 +58,12 @@ class Settings(BaseSettings):
     question_timeout_seconds: float = Field(default=60.0, gt=0)
     request_timeout_seconds: float = Field(default=300.0, gt=0)
 
-    llm_max_attempts: int = Field(default=4, ge=1)
+    # A burst of questions against a rate-limited key exhausts a short budget
+    # and surfaces as failed questions. These values ride out roughly a minute
+    # of 429s, which is what a low-tier key needs under concurrent load.
+    llm_max_attempts: int = Field(default=6, ge=1)
     llm_backoff_base_seconds: float = Field(default=0.5, gt=0)
-    llm_backoff_max_seconds: float = Field(default=8.0, gt=0)
+    llm_backoff_max_seconds: float = Field(default=30.0, gt=0)
 
     document_cache_size: int = Field(default=32, ge=0)
 

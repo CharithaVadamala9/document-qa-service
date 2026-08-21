@@ -46,6 +46,7 @@ class CaseResult:
     retrieved_evidence: bool
     retrieved_pages: list[int]
     status: str | None = None
+    error_code: str | None = None
     answer_ok: bool | None = None
     # Grounded, but drawn from a weaker source than the best one available.
     # Reported, never scored: the answer is not wrong, and forcing it into a
@@ -137,6 +138,7 @@ async def main(
             )
             for result, case, answered in zip(results, cases, outcome.results, strict=True):
                 result.status = answered.status.value
+                result.error_code = answered.error_code
                 if answered.status is AnswerStatus.ANSWERED:
                     body = _normalise(answered.answer)
                     expected = [_normalise(e) for e in case.get("evidence", [])]
@@ -168,12 +170,29 @@ async def main(
             print(f"    - {r.id}  (got pages {r.retrieved_pages})")
 
     if args.with_answers:
-        correct_status = sum((r.status == "answered") == (r.expect == "answered") for r in results)
-        print(
-            f"\nstatus accuracy:  {correct_status / len(results):.0%}  "
-            f"({correct_status}/{len(results)})"
-        )
-        wrong = [r for r in results if (r.status == "answered") != (r.expect == "answered")]
+        # An errored question is not a wrong answer. Scoring the two the same
+        # makes a rate-limited run look like a quality regression, which is
+        # exactly the false conclusion this harness exists to prevent.
+        errored = [r for r in results if r.status == "error"]
+        if errored:
+            print(
+                f"\n!! {len(errored)}/{len(results)} questions ERRORED "
+                f"({', '.join(sorted({r.error_code or '?' for r in errored}))}). "
+                "Accuracy below is NOT comparable to a clean run -- rerun once the "
+                "upstream recovers."
+            )
+            for r in errored:
+                print(f"    - {r.id}: {r.error_code}")
+
+        scored = [r for r in results if r.status != "error"]
+        correct_status = sum((r.status == "answered") == (r.expect == "answered") for r in scored)
+        if scored:
+            print(
+                f"\nstatus accuracy:  {correct_status / len(scored):.0%}  "
+                f"({correct_status}/{len(scored)} scored"
+                f"{f', {len(errored)} excluded as errors' if errored else ''})"
+            )
+        wrong = [r for r in scored if (r.status == "answered") != (r.expect == "answered")]
         for r in wrong:
             label = "false negative" if r.expect == "answered" else "HALLUCINATION RISK"
             print(f"    - {r.id}: expected {r.expect}, got {r.status}   [{label}]")
