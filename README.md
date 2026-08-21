@@ -49,6 +49,8 @@ curl -s -X POST http://localhost:8000/api/v1/qa \
   -F "questions_file=@questions.json"
 ```
 
+Example response (the document here is the synthetic test fixture):
+
 ```json
 {
   "document": "soc2.pdf",
@@ -125,15 +127,24 @@ Errors use one envelope, always:
 
 ## Setup
 
-Requires Python 3.12. (3.13+ is not yet supported by the FAISS/LangChain wheels.)
+Requires **Python 3.12** — 3.13+ has no FAISS wheel yet.
 
 ```bash
-git clone <your-repo-url>
-cd docqa
+git clone https://github.com/CharithaVadamala9/document-qa-service.git
+cd document-qa-service
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env      # then add your OPENAI_API_KEY
+cp .env.example .env      # then put your OPENAI_API_KEY in it
 ```
+
+If you do not have Python 3.12 to hand, [uv](https://docs.astral.sh/uv/) will fetch it for you:
+
+```bash
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -e ".[dev]"
+```
+
+`OPENAI_API_KEY` is the only value you must set; everything else has a working default. The test suite needs neither.
 
 ### Run
 
@@ -155,8 +166,8 @@ or `docker compose up --build`.
 ### Test
 
 ```bash
-pytest                        # deterministic suite, no network
-pytest --cov=app              # ~90% coverage
+pytest                        # 198 tests, no network, no API key
+pytest --cov=app              # 93% coverage
 pytest -m live                # optional: real API calls, needs a key
 ruff check app tests && ruff format --check app tests
 mypy app
@@ -298,7 +309,7 @@ Logs carry chunk **ids**, never chunk text. API keys, prompts and document conte
 
 ## Assumptions and limitations
 
-- **The fixture is synthetic.** The assessment's sample PDF URL (`productfruits.com/docs/soc2-type2.pdf`) now redirects to an HTML page, so tests generate an equivalent SOC 2-style report instead. It exercises the pipeline thoroughly, but answer quality on a real 40–80 page report is not yet measured.
+- **Test fixtures are synthetic; the eval documents are not.** The assessment's sample PDF URL (`productfruits.com/docs/soc2-type2.pdf`) now redirects to an HTML page, so the test suite generates an equivalent SOC 2-style report — which keeps tests hermetic and the repository free of third-party binaries. Answer quality is measured separately, against two real published SOC 2 reports of deliberately opposite shape (see Evaluation). Those PDFs are gitignored rather than redistributed.
 - **Scanned PDFs are rejected**, not OCR'd.
 - **One document per request.**
 - **Dense retrieval is weak on long, repetitive control tables.** In the 55-page table-heavy report, a handful of questions still fail: an exact control id (`CC6.6.1`) and the specific statement of who may modify security group rules both sit in one chunk that never enters the top-k, while its neighbouring table chunks rank fine. Similarity scores across those chunks bunch into a narrow band (roughly 0.28–0.58), so ranking among them is close to arbitrary. This is a known limitation of single-vector dense retrieval over near-identical structured text, not a defect in extraction — the content is extracted correctly and is present in the index. The fix is lexical matching alongside vectors; see Future Improvements.
