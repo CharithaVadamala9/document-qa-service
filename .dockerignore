@@ -2,6 +2,10 @@
 .git/
 .github/
 tests/
+# Local eval documents and the harness: neither is copied into the image, and
+# the PDFs are megabytes of build context for nothing.
+evals/
+examples/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
