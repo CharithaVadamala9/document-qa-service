@@ -32,3 +32,6 @@ tmp/
 .DS_Store
 .idea/
 .vscode/
+
+# Local eval documents (third-party, not redistributed)
+examples/*.pdf

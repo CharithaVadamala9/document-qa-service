@@ -1,0 +1,135 @@
+{
+  "name": "soc2-public-example",
+  "document": "examples/SOC-2-Type-2-Report-Example.pdf",
+  "notes": "Bright Defense's public SOC 2 Type 2 example report. Not committed; download it or point --document elsewhere.",
+  "cases": [
+    {
+      "id": "incident-notification",
+      "question": "Do you have formally defined criteria for notifying a client during an incident that might impact the security of their data or systems? What are your SLAs for notification?",
+      "expect": "answered",
+      "evidence": ["Identification", "customer portal or email"],
+      "pages": [20, 26],
+      "note": "Criteria and channel are described; no SLA hours exist, so a partial answer is correct."
+    },
+    {
+      "id": "third-party-pii",
+      "question": "Is personal information transmitted, processed, stored, or disclosed to or retained by third parties? If yes, describe.",
+      "expect": "answered",
+      "evidence": ["Identity", "Payment"],
+      "pages": [28, 29]
+    },
+    {
+      "id": "cloud-providers",
+      "question": "Which cloud providers do you rely on?",
+      "expect": "answered",
+      "evidence": ["XYZ Cloud Hosting"],
+      "pages": [28]
+    },
+    {
+      "id": "data-centre-regions",
+      "question": "Please specify the primary data center location/region of the underlying cloud infrastructure used to host the service(s) as well as the backup location(s).",
+      "expect": "answered",
+      "evidence": ["United States"],
+      "pages": [12]
+    },
+    {
+      "id": "apm-eum-dem",
+      "question": "Which of the following, if any, are performed as part of your monitoring process for the service: Application Performance Monitoring (APM), End User Monitoring (EUM), Digital Experience Monitoring (DEM)?",
+      "expect": "answered",
+      "evidence": ["Continuous Monitoring"],
+      "pages": [21],
+      "note": "Monitoring exists but the three acronyms never appear; a partial answer is correct."
+    },
+    {
+      "id": "uptime",
+      "question": "What uptime or availability percentage does the company commit to?",
+      "expect": "answered",
+      "evidence": ["99.9%"],
+      "pages": [10]
+    },
+    {
+      "id": "access-reviews",
+      "question": "How often are user access rights reviewed, and who performs the review?",
+      "expect": "answered",
+      "evidence": ["quarterly reviews of access"],
+      "pages": [23]
+    },
+    {
+      "id": "scans-and-pentests",
+      "question": "How frequently are vulnerability scans and penetration tests performed?",
+      "expect": "answered",
+      "evidence": ["weekly", "annually"],
+      "pages": [25]
+    },
+    {
+      "id": "encryption",
+      "question": "What encryption is used for data in transit and at rest?",
+      "expect": "answered",
+      "evidence": ["TLS"],
+      "pages": [10, 37]
+    },
+    {
+      "id": "mfa",
+      "question": "Is multi-factor authentication required, and for which accounts?",
+      "expect": "answered",
+      "evidence": ["multi-factor authentication for administrative and privileged accounts"],
+      "pages": [23]
+    },
+    {
+      "id": "physical-access",
+      "question": "How is physical access to data centers controlled?",
+      "expect": "answered",
+      "evidence": ["biometric readers", "mantraps"],
+      "pages": [23]
+    },
+    {
+      "id": "data-classification",
+      "question": "What data classification levels are defined, and how is each handled?",
+      "expect": "answered",
+      "evidence": ["restricted"],
+      "pages": [13, 17]
+    },
+    {
+      "id": "irp-testing",
+      "question": "How often is the incident response plan tested?",
+      "expect": "answered",
+      "evidence": ["semi-annually"],
+      "pages": [26]
+    },
+    {
+      "id": "incidents-in-period",
+      "question": "Were any significant incidents or significant system changes reported during the examination period?",
+      "expect": "answered",
+      "evidence": ["no significant"],
+      "pages": [29]
+    },
+    {
+      "id": "subservice-orgs",
+      "question": "Which subservice organizations are used and what controls are expected of them?",
+      "expect": "answered",
+      "evidence": ["XYZ Cloud Hosting"],
+      "pages": [28]
+    },
+    {
+      "id": "ceo-pay",
+      "question": "What was the total compensation of the Chief Executive Officer?",
+      "expect": "not_found",
+      "evidence": [],
+      "pages": []
+    },
+    {
+      "id": "headcount",
+      "question": "How many employees does the company have?",
+      "expect": "not_found",
+      "evidence": [],
+      "pages": []
+    },
+    {
+      "id": "rto-rpo",
+      "question": "What are the specific recovery time objective (RTO) and recovery point objective (RPO) values?",
+      "expect": "not_found",
+      "evidence": [],
+      "pages": []
+    }
+  ]
+}

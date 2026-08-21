@@ -36,14 +36,14 @@ class Settings(BaseSettings):
     min_chars_per_page: int = Field(default=40, ge=0)
     min_extractable_page_ratio: float = Field(default=0.2, ge=0.0, le=1.0)
 
-    chunk_size_tokens: int = Field(default=600, gt=0)
+    chunk_size_tokens: int = Field(default=500, gt=0)
     chunk_overlap_tokens: int = Field(default=100, ge=0)
     min_chunk_tokens: int = Field(default=20, ge=0)
     boilerplate_page_ratio: float = Field(default=0.7, gt=0.0, le=1.0)
     header_footer_band: float = Field(default=0.08, gt=0.0, lt=0.5)
 
-    retrieval_top_k: int = Field(default=5, gt=0)
-    mmr_fetch_k: int = Field(default=20, gt=0)
+    retrieval_top_k: int = Field(default=10, gt=0)
+    mmr_fetch_k: int = Field(default=40, gt=0)
     mmr_lambda: float = Field(default=0.5, ge=0.0, le=1.0)
     embedding_batch_size: int = Field(default=100, gt=0)
 

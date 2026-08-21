@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Iterator
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import SecretStr
 
 from app.api.dependencies import get_qa_service
 from app.core.config import Settings
@@ -26,7 +27,19 @@ from tests.fixtures.fakes import FakeAnswerGenerator, FakeEmbedder
 
 @pytest.fixture(scope="session")
 def settings() -> Settings:
-    return Settings(environment="test", log_level="WARNING", log_format="console")
+    """Hermetic settings.
+
+    ``_env_file=None`` and an explicitly blank key stop the suite from picking
+    up a developer's real .env, which would make tests pass locally and fail in
+    CI (or vice versa) depending on whose machine they run on.
+    """
+    return Settings(
+        _env_file=None,
+        environment="test",
+        log_level="WARNING",
+        log_format="console",
+        openai_api_key=SecretStr(""),
+    )
 
 
 # Generating the PDF costs ~100ms, so build it once for the whole session.

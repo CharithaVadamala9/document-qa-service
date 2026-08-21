@@ -33,6 +33,9 @@ _DIGITS = re.compile(r"\d+")
 _MAX_HEADING_CHARS = 120
 _HEADING_SIZE_RATIO = 1.15
 _PARAGRAPH_GAP_RATIO = 0.8
+# Headings are set with more leading than body text, so a wrapped heading is
+# merged across a wider gap than a wrapped paragraph would be.
+_HEADING_MERGE_GAP_RATIO = 1.8
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +57,7 @@ class _Line:
 
     text: str
     size: float
+    bold: bool
     y0: float
     y1: float
 
@@ -165,6 +169,10 @@ def _extract_raw_page(page: pymupdf.Page, number: int) -> _RawPage:
                 _Line(
                     text="".join(s["text"] for s in spans),
                     size=max(s.get("size", 0.0) for s in spans),
+                    # Bit 4 of PyMuPDF's span flags is bold. A line counts as
+                    # bold only if every span is: body text with an inline bold
+                    # phrase must not read as a heading.
+                    bold=all(s.get("flags", 0) & 2**4 for s in spans),
                     y0=bbox.y0,
                     y1=bbox.y1,
                 )
@@ -212,8 +220,15 @@ def _body_font_size(pages: list[_RawPage]) -> float:
 
 
 def _is_heading(line: _Line, heading_floor: float) -> bool:
-    # Length matters as much as size: a long line set large is a pull-quote.
-    return line.size >= heading_floor and len(line.text.strip()) <= _MAX_HEADING_CHARS
+    """Larger than body text, or set entirely in bold.
+
+    Size alone is not enough: professional reports routinely set subsection
+    headings in bold at the body size, and those are exactly the labels worth
+    citing. Length still bounds it, so a long bold sentence is not a heading.
+    """
+    if len(line.text.strip()) > _MAX_HEADING_CHARS:
+        return False
+    return line.size >= heading_floor or line.bold
 
 
 def _join(previous: str, nxt: str) -> str:
@@ -253,7 +268,16 @@ def _reflow(lines: list[_Line], heading_floor: float) -> list[_Paragraph]:
         size_changed = (
             previous is not None and abs(line.size - previous.size) > 0.15 * previous.size
         )
-        starts_paragraph = (
+        # A heading that wraps onto a second line is one heading. Without
+        # this, "Section III - Description of the / System" becomes two, and
+        # the trailing fragment wins as the section label for everything after.
+        continues_heading = (
+            buffer_heading
+            and heading
+            and not size_changed
+            and gap <= _HEADING_MERGE_GAP_RATIO * line.height
+        )
+        starts_paragraph = not continues_heading and (
             previous is None
             or heading
             or buffer_heading

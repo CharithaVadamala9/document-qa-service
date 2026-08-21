@@ -1,0 +1,20 @@
+[
+  "Do you have formally defined criteria for notifying a client during an incident that might impact the security of their data or systems? What are your SLAs for notification?",
+  "Is personal information transmitted, processed, stored, or disclosed to or retained by third parties? If yes, describe.",
+  "Which cloud providers do you rely on?",
+  "Please specify the primary data center location/region of the underlying cloud infrastructure used to host the service(s) as well as the backup location(s).",
+  "Which of the following, if any, are performed as part of your monitoring process for the service: Application Performance Monitoring (APM), End User Monitoring (EUM), Digital Experience Monitoring (DEM)?",
+  "What uptime or availability percentage does the company commit to?",
+  "How often are user access rights reviewed, and who performs the review?",
+  "How frequently are vulnerability scans and penetration tests performed?",
+  "What encryption is used for data in transit and at rest?",
+  "Is multi-factor authentication required, and for which accounts?",
+  "How is physical access to data centers controlled?",
+  "What data classification levels are defined, and how is each handled?",
+  "How often is the incident response plan tested?",
+  "Were any significant incidents or significant system changes reported during the examination period?",
+  "Which subservice organizations are used and what controls are expected of them?",
+  "What was the total compensation of the Chief Executive Officer?",
+  "How many employees does the company have?",
+  "What are the specific recovery time objective (RTO) and recovery point objective (RPO) values?"
+]
