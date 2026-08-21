@@ -179,14 +179,18 @@ Two stages, deliberately separate because they fail for different reasons:
 - **Retrieval recall@k** — did the chunk holding the answer reach the prompt? Needs embeddings only, no LLM, so it is cheap enough to run on every change. This is the *ceiling* on answer quality: if the evidence never arrives, no amount of prompting recovers it.
 - **Status accuracy and fact presence** — did the service answer when it should, refuse when it should, and state the expected fact? One LLM call per case.
 
-Measured on a public 37-page SOC 2 report:
+Two datasets, deliberately of opposite shape, so a change has to hold on both:
 
-| | before | after |
-|---|---|---|
-| Retrieval recall@k | 60% | 93% |
-| Status accuracy | 67% | 94% |
+| Document | Shape | Retrieval recall@k | Status accuracy |
+|---|---|---|---|
+| Bright Defense, 37pp | prose-heavy | 93% (from 60%) | 94% (from 67%) |
+| Zintlr, 55pp | 34 dense control tables | 88% | 80% |
 
-The gap was found by building the harness first. Three separate causes — bold headings missed by size-only detection, chunks too coarse, and a prompt that refused on partial evidence — which only separated because retrieval and generation are scored independently.
+The first gap was found by building the harness before chasing it. Three separate causes — bold headings missed by size-only detection, chunks too coarse, and a prompt that refused on partial evidence — which only separated because retrieval and generation are scored independently.
+
+The second dataset has already paid for itself by **rejecting** a change. Excluding repeated table headers and a document-wide section label from the embedded text looked well-motivated: 59 of 80 chunks began with byte-identical text, which should collapse them into one cluster. It held on the prose document and cost 11 points of recall on the table-heavy one. The repeated header turns out to carry signal as well as noise — the column names describe what the table holds, and questions about *test results* or *control activities* match against them. Reverted. A single-document gate would have kept it.
+
+A third reported category, **grounded but less precise**, is advisory and never scored. It flags an answer that is properly supported by what it cites but drawn from a weaker source than the best one in the document — for instance answering "who can modify security group rules" from a general statement about the IT Security team rather than the specific control that names the IT Head. That is not a correctness failure, and collapsing it into one would hide the distinction between *wrong* and *imprecise*.
 
 The dataset points at a document that is **not committed** (`examples/*.pdf` is gitignored; it is a third-party file). Point `--document` at your own, or add a dataset of your own shape.
 
@@ -297,6 +301,7 @@ Logs carry chunk **ids**, never chunk text. API keys, prompts and document conte
 - **The fixture is synthetic.** The assessment's sample PDF URL (`productfruits.com/docs/soc2-type2.pdf`) now redirects to an HTML page, so tests generate an equivalent SOC 2-style report instead. It exercises the pipeline thoroughly, but answer quality on a real 40–80 page report is not yet measured.
 - **Scanned PDFs are rejected**, not OCR'd.
 - **One document per request.**
+- **Dense retrieval is weak on long, repetitive control tables.** In the 55-page table-heavy report, a handful of questions still fail: an exact control id (`CC6.6.1`) and the specific statement of who may modify security group rules both sit in one chunk that never enters the top-k, while its neighbouring table chunks rank fine. Similarity scores across those chunks bunch into a narrow band (roughly 0.28–0.58), so ranking among them is close to arbitrary. This is a known limitation of single-vector dense retrieval over near-identical structured text, not a defect in extraction — the content is extracted correctly and is present in the index. The fix is lexical matching alongside vectors; see Future Improvements.
 - **The index is in-memory and per-process.** With multiple workers each keeps its own cache; the Dockerfile therefore defaults to a single worker, and scaling is by replica.
 - **No authentication or multi-tenancy** — this is a single-tenant service.
 - `estimated_cost_usd` comes from a static price table, not from the provider.
@@ -309,6 +314,6 @@ PyMuPDF is **AGPL-3.0**. Fine for an assessment, but a commercial deployment wou
 
 - OCR for scanned PDFs.
 - Shared index store (Redis/S3 + a hosted vector DB) so the cache survives restarts and is shared across workers.
-- Hybrid BM25 + vector retrieval. The one case still failing in `evals/` is a question whose evidence is spread thinly across three distant pages; a single dense vector handles that poorly, and lexical matching would help.
+- **Hybrid lexical + vector retrieval (BM25 alongside embeddings).** This is the single highest-value next step, and the remaining eval failures point straight at it. Exact identifiers — control ids like `CC6.6.1`, `A1.2.5` — are precisely what dense embeddings handle worst and lexical matching handles best: BM25 would rank the exact-token match first, immediately. It also addresses the repetitive-table weakness above, where dozens of chunks are near-identical in embedding space but trivially distinguishable by their literal content. A reciprocal-rank fusion of the two rankings would need no change to chunking or the vector store.
 - An LLM-judge stage (RAGAS or equivalent) alongside the deterministic harness, to catch fluent-but-subtly-wrong answers that substring checks miss.
 - Cross-encoder reranking over a larger candidate pool.

@@ -47,6 +47,10 @@ class CaseResult:
     retrieved_pages: list[int]
     status: str | None = None
     answer_ok: bool | None = None
+    # Grounded, but drawn from a weaker source than the best one available.
+    # Reported, never scored: the answer is not wrong, and forcing it into a
+    # failure would hide the difference between "incorrect" and "imprecise".
+    imprecise: bool | None = None
 
 
 # Typeset documents use non-breaking hyphens and en dashes where a keyboard
@@ -137,6 +141,9 @@ async def main(
                     body = _normalise(answered.answer)
                     expected = [_normalise(e) for e in case.get("evidence", [])]
                     result.answer_ok = any(e in body for e in expected) if expected else True
+                    preferred = [_normalise(p) for p in case.get("prefer", [])]
+                    if preferred:
+                        result.imprecise = not any(p in body for p in preferred)
     finally:
         await client.close()
 
@@ -178,6 +185,18 @@ async def main(
             for r in graded:
                 if not r.answer_ok:
                     print(f"    - {r.id}: answered but expected fact absent")
+
+        # Advisory only. These answers are supported by what they cite; they
+        # simply did not reach the most precise statement in the document.
+        checked = [r for r in results if r.imprecise is not None]
+        if checked:
+            imprecise = [r for r in checked if r.imprecise]
+            print(
+                f"\ngrounded but less precise than the best source: "
+                f"{len(imprecise)}/{len(checked)}   [advisory, not scored]"
+            )
+            for r in imprecise:
+                print(f"    - {r.id}")
 
     return 0 if recall == 1.0 else 1
 
