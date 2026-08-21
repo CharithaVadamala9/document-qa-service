@@ -6,77 +6,261 @@
 <title>docqa — document question answering</title>
 <style>
   :root {
-    --bg: #ffffff; --fg: #16181d; --muted: #5c6370; --line: #e3e6ea;
-    --accent: #2a5db0; --ok: #1a7f4b; --warn: #8a6d1f; --err: #b3261e;
-    --panel: #f7f8fa;
+    --page: #f4f6f9;
+    --card: #ffffff;
+    --fg: #14161a;
+    --muted: #6b7280;
+    --faint: #9aa2af;
+    --line: #e6e9ee;
+    --accent: #2563eb;
+    --accent-fg: #ffffff;
+    --accent-soft: #eaf1fe;
+    --dash: #9fbcf5;
+    --ok: #15803d;
+    --ok-soft: #e7f6ec;
+    --warn: #a16207;
+    --warn-soft: #fdf4e0;
+    --err: #b91c1c;
+    --err-soft: #fdeceb;
+    --pdf: #dc2626;
+    --json: #2563eb;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 32px rgba(16, 24, 40, .08);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #14161a; --fg: #e6e8ec; --muted: #9aa1ad; --line: #2b2f36;
-      --accent: #7ba7f0; --ok: #5fd39a; --warn: #e0c060; --err: #f2837a;
-      --panel: #1b1e24;
+      --page: #0f1115;
+      --card: #171a20;
+      --fg: #e8eaee;
+      --muted: #98a0ad;
+      --faint: #6f7784;
+      --line: #262b33;
+      --accent: #5b8bf7;
+      --accent-fg: #0b1220;
+      --accent-soft: #1a2233;
+      --dash: #3e4f70;
+      --ok: #5fd39a;
+      --ok-soft: #14291f;
+      --warn: #e3bf63;
+      --warn-soft: #2a2415;
+      --err: #f2837a;
+      --err-soft: #2c1a19;
+      --pdf: #f2837a;
+      --json: #7ba7f0;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px rgba(0, 0, 0, .35);
     }
   }
+
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; padding: 2rem 1.25rem; background: var(--bg); color: var(--fg);
-    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0;
+    padding: 2.5rem 1.25rem 4rem;
+    background: var(--page);
+    color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  main { max-width: 60rem; margin: 0 auto; }
-  h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
-  p.sub { color: var(--muted); margin: 0 0 1.75rem; }
-  form {
-    display: grid; gap: 1rem; grid-template-columns: 1fr 1fr;
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 1.25rem;
+  main { max-width: 68rem; margin: 0 auto; }
+
+  header { margin-bottom: 1.5rem; }
+  h1 { font-size: 1.4rem; letter-spacing: -.01em; margin: 0 0 .3rem; }
+  header p { margin: 0; color: var(--muted); }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .85em;
+    background: var(--accent-soft);
+    padding: .08em .35em;
+    border-radius: 4px;
   }
-  label { display: block; font-weight: 600; margin-bottom: .4rem; font-size: .875rem; }
-  .hint { color: var(--muted); font-weight: 400; font-size: .8rem; }
-  input[type=file] { width: 100%; font: inherit; font-size: .875rem; }
-  .actions { grid-column: 1 / -1; display: flex; gap: .75rem; align-items: center; }
-  button {
-    font: inherit; font-weight: 600; padding: .55rem 1.15rem; border-radius: 7px;
-    border: 1px solid transparent; background: var(--accent); color: #fff; cursor: pointer;
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
   }
-  button:disabled { opacity: .55; cursor: not-allowed; }
+
+  .uploader {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.75rem;
+    align-items: start;
+  }
+  .zones { display: grid; gap: 1rem; }
+
+  /* --- dropzone --- */
+  .zone {
+    position: relative;
+    border: 2px dashed var(--dash);
+    border-radius: 14px;
+    background: transparent;
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .zone.dragging { background: var(--accent-soft); border-color: var(--accent); }
+  .zone.filled { border-style: solid; border-color: var(--line); }
+  .zone.invalid { border-color: var(--err); }
+  .zone input[type=file] { display: none; }
+  .zone .icon { color: var(--accent); display: block; margin: 0 auto .6rem; }
+  .zone h2 { font-size: .95rem; margin: 0 0 .15rem; }
+  .zone .or { color: var(--faint); font-size: .8rem; margin: .35rem 0; }
+  .zone .accepts { color: var(--faint); font-size: .78rem; margin-top: .6rem; }
+  .zone .zone-error { color: var(--err); font-size: .8rem; margin-top: .5rem; }
+
+  .browse {
+    font: inherit;
+    font-size: .875rem;
+    font-weight: 600;
+    color: var(--accent-fg);
+    background: var(--accent);
+    border: 0;
+    border-radius: 999px;
+    padding: .45rem 1.35rem;
+    cursor: pointer;
+  }
+  .browse:hover { filter: brightness(1.05); }
+
+  /* --- file panel --- */
+  .panel h2 { font-size: 1rem; margin: 0 0 .9rem; }
+  .empty {
+    color: var(--faint);
+    font-size: .875rem;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+  }
+  .file {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .85rem;
+    padding: .6rem 0;
+  }
+  .glyph {
+    width: 34px; height: 42px;
+    border-radius: 5px;
+    display: grid; place-items: end center;
+    padding-bottom: .35rem;
+    font-size: .55rem; font-weight: 800; letter-spacing: .04em;
+    color: #fff;
+    background: var(--json);
+    position: relative;
+  }
+  .glyph.pdf { background: var(--pdf); }
+  .glyph::before {
+    content: ""; position: absolute; top: 0; right: 0;
+    border-width: 0 9px 9px 0;
+    border-style: solid;
+    border-color: transparent rgba(255,255,255,.55) transparent transparent;
+    border-radius: 0 5px 0 0;
+  }
+  .file .name { font-size: .875rem; font-weight: 600; word-break: break-all; }
+  .file .meta { color: var(--faint); font-size: .78rem; }
+  .bar { height: 4px; border-radius: 999px; background: var(--line); margin-top: .4rem; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
+  .remove {
+    border: 0; background: transparent; cursor: pointer; color: var(--faint);
+    font-size: 1.15rem; line-height: 1; padding: .2rem .35rem; border-radius: 6px;
+  }
+  .remove:hover { color: var(--err); background: var(--err-soft); }
+
+  /* --- actions --- */
+  .actions {
+    display: flex; align-items: center; gap: 1rem;
+    margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--line);
+  }
+  .submit {
+    font: inherit; font-weight: 600; font-size: .95rem;
+    color: var(--accent-fg); background: var(--accent);
+    border: 0; border-radius: 10px; padding: .6rem 1.6rem; cursor: pointer;
+  }
+  .submit:disabled { opacity: .45; cursor: not-allowed; }
   #status { color: var(--muted); font-size: .875rem; }
-  #summary { margin: 1.5rem 0 .75rem; color: var(--muted); font-size: .875rem; }
-  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.15rem; margin-bottom: .85rem; }
-  .q { font-weight: 600; margin-bottom: .5rem; }
-  .a { white-space: pre-wrap; }
-  .tag {
-    display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .04em;
-    text-transform: uppercase; padding: .12rem .45rem; border-radius: 4px;
-    border: 1px solid currentColor; margin-right: .5rem; vertical-align: 2px;
+
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--line); border-top-color: var(--accent);
+    display: inline-block; vertical-align: -2px; margin-right: .45rem;
+    animation: spin .7s linear infinite;
   }
-  .answered { color: var(--ok); } .not_found { color: var(--warn); } .error { color: var(--err); }
-  .cites { margin-top: .7rem; border-top: 1px dashed var(--line); padding-top: .6rem; }
-  .cite { font-size: .82rem; color: var(--muted); margin-bottom: .4rem; }
-  .cite b { color: var(--fg); font-weight: 600; }
-  .banner { border: 1px solid var(--err); color: var(--err); border-radius: 8px; padding: .8rem 1rem; margin-bottom: 1rem; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
-  @media (max-width: 40rem) { form { grid-template-columns: 1fr; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* --- results --- */
+  .banner {
+    margin-top: 1.5rem; border: 1px solid var(--err); background: var(--err-soft);
+    color: var(--err); border-radius: 12px; padding: .85rem 1.1rem; font-size: .9rem;
+  }
+  #summary { margin: 1.75rem 0 .85rem; color: var(--muted); font-size: .875rem; }
+  .result { margin-bottom: .85rem; padding: 1.15rem 1.35rem; }
+  .q { font-weight: 650; margin-bottom: .6rem; }
+  .tag {
+    display: inline-block; font-size: .68rem; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; padding: .16rem .5rem; border-radius: 5px; margin-bottom: .6rem;
+  }
+  .tag.answered { color: var(--ok); background: var(--ok-soft); }
+  .tag.not_found { color: var(--warn); background: var(--warn-soft); }
+  .tag.error { color: var(--err); background: var(--err-soft); }
+  .a { white-space: pre-wrap; }
+  .cites { margin-top: .9rem; border-top: 1px solid var(--line); padding-top: .75rem; }
+  .cite { font-size: .82rem; color: var(--muted); margin-bottom: .55rem; }
+  .cite .where { color: var(--fg); font-weight: 600; }
+
+  @media (max-width: 52rem) {
+    .uploader { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>docqa</h1>
-  <p class="sub">Answers questions using only the document you upload. Unsupported questions return <code>not_found</code>.</p>
+  <header>
+    <h1>docqa</h1>
+    <p>Answers questions using only the document you upload. Unsupported questions return <code>not_found</code>.</p>
+  </header>
 
-  <form id="form">
-    <div>
-      <label for="document_file">Document <span class="hint">PDF or JSON</span></label>
-      <input id="document_file" name="document_file" type="file" accept=".pdf,.json,application/pdf,application/json" required />
+  <section class="card">
+    <div class="uploader">
+      <div class="zones">
+        <div class="zone" id="zone-document" data-key="document">
+          <svg class="icon" width="30" height="30" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+          </svg>
+          <h2>Drag and drop the document</h2>
+          <div class="or">or</div>
+          <button class="browse" type="button">Browse</button>
+          <div class="accepts">Supported files: PDF, JSON</div>
+          <div class="zone-error" hidden></div>
+          <input type="file" accept=".pdf,.json,application/pdf,application/json" />
+        </div>
+
+        <div class="zone" id="zone-questions" data-key="questions">
+          <svg class="icon" width="30" height="30" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+          </svg>
+          <h2>Drag and drop the questions</h2>
+          <div class="or">or</div>
+          <button class="browse" type="button">Browse</button>
+          <div class="accepts">Supported files: JSON array of questions</div>
+          <div class="zone-error" hidden></div>
+          <input type="file" accept=".json,application/json" />
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Selected files</h2>
+        <div id="files"></div>
+      </div>
     </div>
-    <div>
-      <label for="questions_file">Questions <span class="hint">JSON array</span></label>
-      <input id="questions_file" name="questions_file" type="file" accept=".json,application/json" required />
-    </div>
+
     <div class="actions">
-      <button id="submit" type="submit">Ask</button>
-      <span id="status"></span>
+      <button class="submit" id="submit" type="button" disabled>Ask</button>
+      <span id="status">Add both files to continue.</span>
     </div>
-  </form>
+  </section>
 
   <div id="error" hidden></div>
   <div id="summary" hidden></div>
@@ -84,23 +268,203 @@
 </main>
 
 <script>
-  const form = document.getElementById("form");
-  const button = document.getElementById("submit");
-  const statusEl = document.getElementById("status");
-  const errorEl = document.getElementById("error");
-  const summaryEl = document.getElementById("summary");
-  const resultsEl = document.getElementById("results");
+(() => {
+  "use strict";
 
-  const text = (value) => {
-    const node = document.createElement("span");
-    node.textContent = value;
-    return node.innerHTML;
+  const ACCEPTS = {
+    document: { exts: ["pdf", "json"], label: "a PDF or JSON file" },
+    questions: { exts: ["json"], label: "a JSON file" },
   };
+  const TITLES = { document: "Document", questions: "Questions" };
+
+  const state = { document: null, questions: null };
+
+  const $ = (id) => document.getElementById(id);
+  const filesEl = $("files");
+  const submitEl = $("submit");
+  const statusEl = $("status");
+  const errorEl = $("error");
+  const summaryEl = $("summary");
+  const resultsEl = $("results");
+
+  const extensionOf = (name) => (name.split(".").pop() || "").toLowerCase();
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const el = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  // --- file selection -----------------------------------------------------
+
+  function showZoneError(zone, message) {
+    const box = zone.querySelector(".zone-error");
+    box.textContent = message;
+    box.hidden = !message;
+    zone.classList.toggle("invalid", Boolean(message));
+  }
+
+  function accept(key, file) {
+    const zone = $(`zone-${key}`);
+    if (!file) return;
+
+    const ext = extensionOf(file.name);
+    if (!ACCEPTS[key].exts.includes(ext)) {
+      showZoneError(zone, `That is a .${ext} file. Please choose ${ACCEPTS[key].label}.`);
+      return;
+    }
+
+    showZoneError(zone, "");
+    state[key] = { file, questionCount: null, progress: 0 };
+    zone.classList.add("filled");
+
+    // Parse the questions file in the browser so an obvious mistake is caught
+    // before an upload, and the count is visible up front.
+    if (key === "questions") inspectQuestions(file);
+    renderFiles();
+  }
+
+  function inspectQuestions(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        const list = Array.isArray(parsed)
+          ? parsed
+          : parsed && (parsed.questions || parsed.items || parsed.data);
+        if (Array.isArray(list)) {
+          if (state.questions) state.questions.questionCount = list.length;
+          showZoneError($("zone-questions"), "");
+        } else {
+          showZoneError($("zone-questions"),
+            'Expected a JSON array, or an object with a "questions" array.');
+        }
+      } catch (err) {
+        showZoneError($("zone-questions"), "That file is not valid JSON.");
+      }
+      renderFiles();
+    };
+    reader.readAsText(file);
+  }
+
+  function clear(key) {
+    state[key] = null;
+    const zone = $(`zone-${key}`);
+    zone.classList.remove("filled");
+    zone.querySelector("input").value = "";
+    showZoneError(zone, "");
+    renderFiles();
+  }
+
+  function renderFiles() {
+    filesEl.replaceChildren();
+    const keys = Object.keys(state).filter((k) => state[k]);
+
+    if (!keys.length) {
+      filesEl.append(el("div", "empty", "Nothing selected yet."));
+      updateReady();
+      return;
+    }
+
+    for (const key of keys) {
+      const entry = state[key];
+      const ext = extensionOf(entry.file.name);
+
+      const row = el("div", "file");
+      row.append(el("div", `glyph ${ext === "pdf" ? "pdf" : ""}`, ext.toUpperCase()));
+
+      const middle = el("div");
+      middle.append(el("div", "name", entry.file.name));
+
+      const bits = [TITLES[key], formatSize(entry.file.size)];
+      if (entry.questionCount !== null && entry.questionCount !== undefined) {
+        bits.push(`${entry.questionCount} question${entry.questionCount === 1 ? "" : "s"}`);
+      }
+      middle.append(el("div", "meta", bits.join(" · ")));
+
+      const bar = el("div", "bar");
+      const fill = el("i");
+      fill.style.width = `${entry.progress || 0}%`;
+      bar.append(fill);
+      bar.hidden = !entry.progress;
+      middle.append(bar);
+      row.append(middle);
+
+      const remove = el("button", "remove", "×");
+      remove.type = "button";
+      remove.title = `Remove ${TITLES[key].toLowerCase()}`;
+      remove.addEventListener("click", () => clear(key));
+      row.append(remove);
+
+      filesEl.append(row);
+    }
+    updateReady();
+  }
+
+  function updateReady() {
+    const ready = Boolean(state.document && state.questions);
+    submitEl.disabled = !ready;
+    if (!submitEl.dataset.busy) {
+      statusEl.textContent = ready
+        ? "Ready."
+        : `Add ${!state.document ? "a document" : "a questions file"} to continue.`;
+    }
+  }
+
+  function setProgress(percent) {
+    for (const key of Object.keys(state)) {
+      if (state[key]) state[key].progress = percent;
+    }
+    renderFiles();
+  }
+
+  // --- wiring -------------------------------------------------------------
+
+  for (const key of Object.keys(ACCEPTS)) {
+    const zone = $(`zone-${key}`);
+    const input = zone.querySelector("input");
+
+    zone.querySelector(".browse").addEventListener("click", () => input.click());
+    input.addEventListener("change", () => accept(key, input.files[0]));
+
+    // dragenter/dragover must both be prevented or the browser navigates to
+    // the dropped file instead of firing drop.
+    for (const type of ["dragenter", "dragover"]) {
+      zone.addEventListener(type, (event) => {
+        event.preventDefault();
+        zone.classList.add("dragging");
+      });
+    }
+    for (const type of ["dragleave", "drop"]) {
+      zone.addEventListener(type, () => zone.classList.remove("dragging"));
+    }
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      accept(key, event.dataTransfer.files[0]);
+    });
+  }
+
+  // Dropping outside a zone would otherwise replace the page with the file.
+  for (const type of ["dragover", "drop"]) {
+    window.addEventListener(type, (event) => event.preventDefault());
+  }
+
+  // --- submission ---------------------------------------------------------
 
   function showError(message, requestId) {
     errorEl.hidden = false;
     errorEl.className = "banner";
-    errorEl.innerHTML = text(message) + (requestId ? ` <code>${text(requestId)}</code>` : "");
+    errorEl.replaceChildren(el("span", null, message));
+    if (requestId) {
+      errorEl.append(" ", el("code", null, requestId));
+    }
   }
 
   function locator(citation) {
@@ -108,61 +472,111 @@
       const p = citation.pages;
       return p.length === 1 ? `page ${p[0]}` : `pages ${p[0]}–${p[p.length - 1]}`;
     }
-    if (citation.json_paths && citation.json_paths.length) {
-      return citation.json_paths.join(", ");
-    }
+    if (citation.json_paths && citation.json_paths.length) return citation.json_paths.join(", ");
     return "document";
   }
 
-  function render(payload) {
+  function renderResults(payload) {
     const m = payload.metadata;
     summaryEl.hidden = false;
-    summaryEl.textContent =
-      `${m.questions_processed} question(s) · ${m.answered} answered · ` +
-      `${m.not_found} not found · ${m.failed} failed · ` +
-      `${m.chunk_count} chunks · ${Math.round(m.processing_time_ms)} ms · ` +
-      `${m.usage.total_tokens} tokens · $${m.usage.estimated_cost_usd.toFixed(6)}` +
-      (m.document_cache_hit ? " · cached index" : "");
+    summaryEl.textContent = [
+      `${m.questions_processed} question${m.questions_processed === 1 ? "" : "s"}`,
+      `${m.answered} answered`,
+      `${m.not_found} not found`,
+      `${m.failed} failed`,
+      `${m.chunk_count} chunks`,
+      `${Math.round(m.processing_time_ms)} ms`,
+      `${m.usage.total_tokens} tokens`,
+      `$${m.usage.estimated_cost_usd.toFixed(6)}`,
+      m.document_cache_hit ? "cached index" : null,
+    ].filter(Boolean).join(" · ");
 
-    resultsEl.innerHTML = payload.results.map((r) => {
-      const cites = (r.citations || []).map((c) =>
-        `<div class="cite"><b>${text(c.source)}</b> — ${text(locator(c))}` +
-        (c.section ? ` · ${text(c.section)}` : "") +
-        `<br>${text(c.snippet)}</div>`
-      ).join("");
-      return `<div class="card">
-        <div class="q">${text(r.question)}</div>
-        <div><span class="tag ${r.status}">${text(r.status.replace("_", " "))}</span></div>
-        <div class="a">${text(r.answer)}</div>
-        ${cites ? `<div class="cites">${cites}</div>` : ""}
-      </div>`;
-    }).join("");
+    resultsEl.replaceChildren();
+    for (const result of payload.results) {
+      const card = el("div", "card result");
+      card.append(el("div", "q", result.question));
+      card.append(el("span", `tag ${result.status}`, result.status.replace("_", " ")));
+      card.append(el("div", "a", result.answer));
+
+      if (result.citations && result.citations.length) {
+        const cites = el("div", "cites");
+        for (const citation of result.citations) {
+          const item = el("div", "cite");
+          item.append(el("span", "where", `${citation.source} — ${locator(citation)}`));
+          if (citation.section) item.append(` · ${citation.section}`);
+          item.append(document.createElement("br"));
+          item.append(citation.snippet);
+          cites.append(item);
+        }
+        card.append(cites);
+      }
+      resultsEl.append(card);
+    }
   }
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  // XHR rather than fetch: fetch exposes no upload progress, and a large PDF
+  // on a slow link needs to show that something is happening.
+  function post(form, onProgress) {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", "/api/v1/qa");
+      request.responseType = "json";
+      request.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) onProgress((event.loaded / event.total) * 100);
+      });
+      request.addEventListener("load", () =>
+        resolve({ status: request.status, body: request.response }));
+      request.addEventListener("error", () => reject(new Error("the network request failed")));
+      request.addEventListener("timeout", () => reject(new Error("the request timed out")));
+      request.send(form);
+    });
+  }
+
+  submitEl.addEventListener("click", async () => {
+    if (!state.document || !state.questions) return;
+
     errorEl.hidden = true;
     summaryEl.hidden = true;
-    resultsEl.innerHTML = "";
-    button.disabled = true;
-    statusEl.textContent = "Reading document and answering…";
+    resultsEl.replaceChildren();
+    submitEl.disabled = true;
+    submitEl.dataset.busy = "1";
 
     const started = performance.now();
+    const form = new FormData();
+    form.append("document_file", state.document.file);
+    form.append("questions_file", state.questions.file);
+
+    statusEl.replaceChildren(el("span", "spinner"), el("span", null, "Uploading…"));
+
     try {
-      const response = await fetch("/api/v1/qa", { method: "POST", body: new FormData(form) });
-      const payload = await response.json();
-      if (!response.ok) {
-        showError(payload?.error?.message || `Request failed (${response.status}).`, payload?.request_id);
-        return;
+      const { status, body } = await post(form, (percent) => {
+        setProgress(percent);
+        if (percent >= 100) {
+          statusEl.replaceChildren(el("span", "spinner"), el("span", null, "Answering…"));
+        }
+      });
+
+      if (status >= 200 && status < 300 && body) {
+        renderResults(body);
+        statusEl.textContent = `Completed in ${Math.round(performance.now() - started)} ms`;
+      } else {
+        const message = (body && body.error && body.error.message)
+          || `The request failed (HTTP ${status}).`;
+        showError(message, body && body.request_id);
+        statusEl.textContent = "Failed.";
       }
-      render(payload);
     } catch (err) {
-      showError("Could not reach the service: " + err.message);
+      showError(`Could not reach the service: ${err.message}`);
+      statusEl.textContent = "Failed.";
     } finally {
-      button.disabled = false;
-      statusEl.textContent = `Completed in ${Math.round(performance.now() - started)} ms`;
+      setProgress(0);
+      delete submitEl.dataset.busy;
+      submitEl.disabled = false;
     }
   });
+
+  renderFiles();
+})();
 </script>
 </body>
 </html>
