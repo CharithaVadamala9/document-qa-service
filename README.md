@@ -9,7 +9,7 @@ Answers a list of questions from a single PDF or JSON document, using retrieval-
 Upload two files — a document (PDF or JSON) and a JSON list of questions — and get back one answer per question, each with citations pointing at the pages or JSON paths the answer came from.
 
 - **Inputs:** PDF or JSON document, plus a JSON questions file. Format is detected from file content, not the extension.
-- **Retrieval:** the document is chunked, embedded once with `text-embedding-3-small`, and indexed in FAISS. Each question retrieves its own top-5 chunks using MMR.
+- **Retrieval:** the document is chunked, embedded once with `text-embedding-3-small`, and indexed in FAISS. Each question retrieves its own top-10 chunks using MMR.
 - **Generation:** `gpt-4o-mini` with structured output, constrained to the retrieved extracts.
 - **Output:** one result per question with `status` of `answered`, `not_found`, or `error`, plus citations and token/cost metadata.
 
@@ -155,13 +155,42 @@ or `docker compose up --build`.
 ### Test
 
 ```bash
-pytest                        # 159 tests
+pytest                        # deterministic suite, no network
 pytest --cov=app              # ~90% coverage
+pytest -m live                # optional: real API calls, needs a key
 ruff check app tests && ruff format --check app tests
 mypy app
 ```
 
-**No test requires an API key or network access.** The embedder and the model are injected as fakes through FastAPI's dependency overrides.
+**No test in the default suite requires an API key or network access.** The embedder and the model are injected as fakes through FastAPI's dependency overrides. Tests marked `live` are deselected by default: model behaviour is probabilistic and cannot be a build gate.
+
+## Evaluation
+
+Prompt tweaks and chunking changes are easy to talk about and hard to judge. `evals/` scores them.
+
+```bash
+python -m evals.run --dataset evals/dataset_soc2.json                 # retrieval only, ~$0.001
+python -m evals.run --dataset evals/dataset_soc2.json --with-answers  # + LLM grading
+python -m evals.run --dataset ... --chunk-tokens 400 --top-k 8        # sweep a setting
+```
+
+Two stages, deliberately separate because they fail for different reasons:
+
+- **Retrieval recall@k** — did the chunk holding the answer reach the prompt? Needs embeddings only, no LLM, so it is cheap enough to run on every change. This is the *ceiling* on answer quality: if the evidence never arrives, no amount of prompting recovers it.
+- **Status accuracy and fact presence** — did the service answer when it should, refuse when it should, and state the expected fact? One LLM call per case.
+
+Measured on a public 37-page SOC 2 report:
+
+| | before | after |
+|---|---|---|
+| Retrieval recall@k | 60% | 93% |
+| Status accuracy | 67% | 94% |
+
+The gap was found by building the harness first. Three separate causes — bold headings missed by size-only detection, chunks too coarse, and a prompt that refused on partial evidence — which only separated because retrieval and generation are scored independently.
+
+The dataset points at a document that is **not committed** (`examples/*.pdf` is gitignored; it is a third-party file). Point `--document` at your own, or add a dataset of your own shape.
+
+**On RAGAS and similar frameworks:** worth adding as an opt-in extra, not as the gate. RAGAS scores faithfulness and answer relevancy well, but it is LLM-as-judge — non-deterministic, costed per run, and a heavy dependency tree. The harness here is deterministic and free for the retrieval half, which is what you want running on every commit. Its weakness is the converse: a substring check cannot see an answer that is fluent, cited, and subtly misstates the source. That is exactly what an LLM judge is good at, so the two are complements rather than alternatives.
 
 ## Design decisions
 
@@ -171,13 +200,15 @@ mypy app
 
 **Why `text-embedding-3-small`** — ~$0.02 per 1M tokens. A 50-page report costs about $0.0006 to index, versus $0.004 for `-3-large`, for a marginal ranking gain on keyword-dense compliance prose.
 
-**Why token-aware chunking** — 600 tokens with 100 overlap. Character-based sizing makes the context budget unpredictable when packing five chunks into a prompt. 600 tokens fits a typical control description whole; smaller fragments it, larger dilutes the embedding.
+**Why token-aware chunking** — 500 tokens with 100 overlap. Character-based sizing makes the context budget unpredictable when packing five chunks into a prompt. 600 tokens fits a typical control description whole; smaller fragments it, larger dilutes the embedding.
 
 **Why separate PDF and JSON handling** — they fail differently. PDFs need layout analysis: running headers stripped (otherwise a 50-page report yields ~50 near-duplicate chunks that crowd out real content), tables rendered as markdown rather than linearised into column soup, and headings recovered from font size. JSON needs the opposite: character-splitting it severs records mid-object, and flattening to `owner.contact` destroys the grouping that says which owner a contact belongs to. Records are rendered as indented text, ancestor scalars are inherited, and foreign keys are resolved to labels — `owner_id: 42` is unreachable by semantic search, `owner_id: 42 (Security Engineering)` is not.
 
 **Why overlap only on prose** — repeating a self-contained JSON record or table row gives it two nearly identical vectors, letting one record win two of five retrieval slots. Structured segments get header repetition instead: a split table repeats its column row, a split record repeats its title and ancestor context.
 
-**Why MMR** — with overlapping chunks, plain top-5 routinely returns several near-copies of one passage. MMR (`fetch_k=20`, `λ=0.5`) buys diversity with no extra API calls.
+**Why MMR** — with overlapping chunks, plain top-k routinely returns several near-copies of one passage. MMR (`fetch_k=40`, `λ=0.5`) buys diversity with no extra API calls.
+
+**Why 500 tokens and top-10** — these are measured, not guessed. Against a public 37-page SOC 2 report, 600-token chunks at top-5 gave 73% retrieval recall; 500 at top-10 gives 93%. See `evals/`.
 
 **Why bounded concurrency** — questions run in parallel so 20 questions take roughly the time of the slowest, not the sum. A per-request semaphore stops one large question list from monopolising the quota; a global cap stops N concurrent requests multiplying into a rate-limit wall.
 
@@ -190,6 +221,9 @@ The retrieved chunks are the only source of truth. Three mechanisms enforce it:
 1. **The model cites by extract number, never by page.** It sees `[1]`, `[2]`, `[3]`; page numbers and JSON paths are attached afterwards from chunk metadata. A fabricated page number is structurally impossible.
 2. **Out-of-range indices are discarded.** The source list is model output and is treated as untrusted.
 3. **An answer with no valid citation is downgraded to `not_found`.** This is what turns "please don't hallucinate" from a prompt request into an enforced invariant.
+4. **Figures are verified against the cited text.** If an answer asserts a number that appears in neither the extracts it cited nor the question, it is downgraded. A notification SLA of 24 hours where the document says 72 reads as authoritative and is wrong; this catches it deterministically, with no second model call. Disable with `VERIFY_NUMERIC_GROUNDING=false`.
+
+A question the extracts answer only in part returns the supported part with the gap stated, rather than a blank refusal — a flat `not_found` on a partially-answerable question throws away information the caller needs.
 
 Unsupported questions return exactly:
 
@@ -208,10 +242,11 @@ Every limit is environment-driven; see `.env.example` for the full list.
 | `OPENAI_API_KEY` | — | Required. The only mandatory value |
 | `LLM_MODEL` | `gpt-4o-mini` | Answer generation |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Retrieval embeddings |
-| `CHUNK_SIZE_TOKENS` | `600` | Target chunk size |
+| `CHUNK_SIZE_TOKENS` | `500` | Target chunk size |
 | `CHUNK_OVERLAP_TOKENS` | `100` | Prose overlap |
-| `RETRIEVAL_TOP_K` | `5` | Chunks per question |
-| `MMR_FETCH_K` / `MMR_LAMBDA` | `20` / `0.5` | MMR candidate pool and diversity weight |
+| `RETRIEVAL_TOP_K` | `10` | Chunks per question |
+| `MMR_FETCH_K` / `MMR_LAMBDA` | `40` / `0.5` | MMR candidate pool and diversity weight |
+| `VERIFY_NUMERIC_GROUNDING` | `true` | Downgrade answers asserting uncited figures |
 | `MAX_FILE_SIZE_MB` | `20` | Document upload limit |
 | `MAX_PDF_PAGES` | `300` | Page limit |
 | `MAX_QUESTIONS` | `50` | Questions per request |
@@ -255,7 +290,7 @@ Logs carry chunk **ids**, never chunk text. API keys, prompts and document conte
 - Documents are processed **in memory** — nothing is written to disk. Uploaded filenames are reduced to a display label with path separators and traversal segments stripped, and are never used as filesystem paths.
 - File type is determined by content sniffing. A `%PDF-` header check is enforced before parsing, because MuPDF will otherwise happily parse HTML — so a PDF URL that has started redirecting to an error page would silently ingest as a valid document.
 - Size, page-count, question-count, JSON depth and JSON node limits are all enforced before expensive work begins.
-- The prompt instructs the model to treat extract content as data, never instructions, since documents are untrusted input.
+- **Prompt injection.** Documents are untrusted, so a supplier's PDF may carry text aimed at the model. The prompt frames extracts as data, never instructions — but that is a request, not a guarantee, so the defences that matter are structural: the model returns extract *numbers* rather than page numbers, out-of-range indices are discarded, uncited answers are downgraded, and figures are checked against the cited text. `tests/unit/test_injection.py` covers both halves: deterministic tests that assume the model *has already been compromised* and check the damage is contained, plus `-m live` tests of whether `gpt-4o-mini` actually resists. Payloads are deliberately *not* stripped during ingestion — the caller is entitled to see what their document contains.
 
 ## Assumptions and limitations
 
@@ -274,6 +309,6 @@ PyMuPDF is **AGPL-3.0**. Fine for an assessment, but a commercial deployment wou
 
 - OCR for scanned PDFs.
 - Shared index store (Redis/S3 + a hosted vector DB) so the cache survives restarts and is shared across workers.
-- Hybrid BM25 + vector retrieval, which helps on exact identifiers like control IDs where embeddings are weak.
+- Hybrid BM25 + vector retrieval. The one case still failing in `evals/` is a question whose evidence is spread thinly across three distant pages; a single dense vector handles that poorly, and lexical matching would help.
+- An LLM-judge stage (RAGAS or equivalent) alongside the deterministic harness, to catch fluent-but-subtly-wrong answers that substring checks miss.
 - Cross-encoder reranking over a larger candidate pool.
-- A retrieval evaluation set with recall@k and answer-accuracy scoring, so chunking and `top_k` changes can be measured instead of argued.

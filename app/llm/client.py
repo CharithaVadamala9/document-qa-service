@@ -21,6 +21,7 @@ from app.core.errors import ConfigurationError, UpstreamError, UpstreamTimeout
 from app.core.logging import Timer, get_logger
 from app.core.models import NOT_FOUND_TEXT, AnswerStatus, Citation, TokenUsage
 from app.core.retry import is_fatal, retry_policy
+from app.llm.grounding import unsupported_figures
 from app.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 from app.retrieval.vector_store import ScoredChunk
 
@@ -122,9 +123,20 @@ class OpenAIAnswerGenerator:
         if parsed.status == "not_found" or not parsed.answer.strip():
             return _not_found(timer.ms, usage)
 
+        answer = parsed.answer.strip()
+        if self._settings.verify_numeric_grounding:
+            cited_ids = {c.chunk_id for c in citations}
+            cited_text = " ".join(c.chunk.text for c in chunks if c.chunk.id in cited_ids)
+            invented = unsupported_figures(answer, cited_text=cited_text, question=question)
+            if invented:
+                # A figure absent from the cited extracts is not grounded,
+                # whatever the surrounding prose claims.
+                logger.warning("answer.unsupported_figures", figures=invented[:5])
+                return _not_found(timer.ms, usage)
+
         return GeneratedAnswer(
             status=AnswerStatus.ANSWERED,
-            answer=parsed.answer.strip(),
+            answer=answer,
             citations=citations,
             usage=usage,
             latency_ms=timer.ms,

@@ -161,7 +161,7 @@ class TestOpenAIEmbedder:
 def _scored(index: int) -> ScoredChunk:
     chunk = Chunk(
         id=f"c{index}",
-        text=f"Extract {index} body text.",
+        text=f"Extract {index}: notification occurs within seventy-two (72) hours.",
         index=index,
         token_count=5,
         source="soc2.pdf",

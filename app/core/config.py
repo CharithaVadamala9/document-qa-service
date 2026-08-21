@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     embedding_dimensions: int = Field(default=1536, gt=0)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_answer_tokens: int = Field(default=512, gt=0)
+    # Downgrade an answer to not_found when it asserts a figure absent from the
+    # extracts it cites. Deterministic; no extra model call.
+    verify_numeric_grounding: bool = True
 
     max_file_size_mb: int = Field(default=20, gt=0)
     max_questions_file_kb: int = Field(default=256, gt=0)
