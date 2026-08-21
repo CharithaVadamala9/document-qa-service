@@ -1,0 +1,85 @@
+[project]
+name = "docqa"
+version = "0.1.0"
+description = "Retrieval-augmented question answering over PDF and JSON documents"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    # --- web layer -------------------------------------------------------
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.12",   # multipart/form-data file uploads
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    # --- LLM / RAG -------------------------------------------------------
+    # Used as a component library, not as a chain framework: splitters,
+    # model clients and test doubles. Orchestration is ours (see app/qa).
+    "langchain-core>=0.3.15",
+    "langchain-openai>=0.2.5",
+    "langchain-text-splitters>=0.3.2",
+    "openai>=1.54",
+    "tiktoken>=0.8",
+    "faiss-cpu>=1.9",
+    "numpy>=1.26",
+    # --- document parsing ------------------------------------------------
+    # PyMuPDF is AGPL-3.0. See README "Licensing"; app/ingestion/pdf.py is
+    # written against a narrow interface so pypdf (BSD) can be swapped in.
+    "pymupdf>=1.24",
+    # --- operational -----------------------------------------------------
+    "structlog>=24.4",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "httpx>=0.27",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "live: hits the real OpenAI API; deselected by default (-m 'not live')",
+]
+filterwarnings = [
+    "error",
+    # PyMuPDF's SWIG bindings emit these on import; not actionable by us.
+    "ignore:builtin type Swig.*:DeprecationWarning",
+    "ignore:builtin type swigvarlink.*:DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+[[tool.mypy.overrides]]
+module = ["faiss.*", "pymupdf.*", "langchain_text_splitters.*"]
+ignore_missing_imports = true
+
+# PyMuPDF ships no type information, so every call into it reads as untyped.
+# Scoped to the one module that touches it rather than relaxed globally.
+[[tool.mypy.overrides]]
+module = "app.ingestion.pdf"
+disallow_untyped_calls = false

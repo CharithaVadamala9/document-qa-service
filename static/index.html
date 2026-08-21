@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>docqa — document question answering</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #16181d; --muted: #5c6370; --line: #e3e6ea;
+    --accent: #2a5db0; --ok: #1a7f4b; --warn: #8a6d1f; --err: #b3261e;
+    --panel: #f7f8fa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e6e8ec; --muted: #9aa1ad; --line: #2b2f36;
+      --accent: #7ba7f0; --ok: #5fd39a; --warn: #e0c060; --err: #f2837a;
+      --panel: #1b1e24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 60rem; margin: 0 auto; }
+  h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
+  p.sub { color: var(--muted); margin: 0 0 1.75rem; }
+  form {
+    display: grid; gap: 1rem; grid-template-columns: 1fr 1fr;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1.25rem;
+  }
+  label { display: block; font-weight: 600; margin-bottom: .4rem; font-size: .875rem; }
+  .hint { color: var(--muted); font-weight: 400; font-size: .8rem; }
+  input[type=file] { width: 100%; font: inherit; font-size: .875rem; }
+  .actions { grid-column: 1 / -1; display: flex; gap: .75rem; align-items: center; }
+  button {
+    font: inherit; font-weight: 600; padding: .55rem 1.15rem; border-radius: 7px;
+    border: 1px solid transparent; background: var(--accent); color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  #status { color: var(--muted); font-size: .875rem; }
+  #summary { margin: 1.5rem 0 .75rem; color: var(--muted); font-size: .875rem; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.15rem; margin-bottom: .85rem; }
+  .q { font-weight: 600; margin-bottom: .5rem; }
+  .a { white-space: pre-wrap; }
+  .tag {
+    display: inline-block; font-size: .7rem; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; padding: .12rem .45rem; border-radius: 4px;
+    border: 1px solid currentColor; margin-right: .5rem; vertical-align: 2px;
+  }
+  .answered { color: var(--ok); } .not_found { color: var(--warn); } .error { color: var(--err); }
+  .cites { margin-top: .7rem; border-top: 1px dashed var(--line); padding-top: .6rem; }
+  .cite { font-size: .82rem; color: var(--muted); margin-bottom: .4rem; }
+  .cite b { color: var(--fg); font-weight: 600; }
+  .banner { border: 1px solid var(--err); color: var(--err); border-radius: 8px; padding: .8rem 1rem; margin-bottom: 1rem; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; }
+  @media (max-width: 40rem) { form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>docqa</h1>
+  <p class="sub">Answers questions using only the document you upload. Unsupported questions return <code>not_found</code>.</p>
+
+  <form id="form">
+    <div>
+      <label for="document_file">Document <span class="hint">PDF or JSON</span></label>
+      <input id="document_file" name="document_file" type="file" accept=".pdf,.json,application/pdf,application/json" required />
+    </div>
+    <div>
+      <label for="questions_file">Questions <span class="hint">JSON array</span></label>
+      <input id="questions_file" name="questions_file" type="file" accept=".json,application/json" required />
+    </div>
+    <div class="actions">
+      <button id="submit" type="submit">Ask</button>
+      <span id="status"></span>
+    </div>
+  </form>
+
+  <div id="error" hidden></div>
+  <div id="summary" hidden></div>
+  <div id="results"></div>
+</main>
+
+<script>
+  const form = document.getElementById("form");
+  const button = document.getElementById("submit");
+  const statusEl = document.getElementById("status");
+  const errorEl = document.getElementById("error");
+  const summaryEl = document.getElementById("summary");
+  const resultsEl = document.getElementById("results");
+
+  const text = (value) => {
+    const node = document.createElement("span");
+    node.textContent = value;
+    return node.innerHTML;
+  };
+
+  function showError(message, requestId) {
+    errorEl.hidden = false;
+    errorEl.className = "banner";
+    errorEl.innerHTML = text(message) + (requestId ? ` <code>${text(requestId)}</code>` : "");
+  }
+
+  function locator(citation) {
+    if (citation.pages && citation.pages.length) {
+      const p = citation.pages;
+      return p.length === 1 ? `page ${p[0]}` : `pages ${p[0]}–${p[p.length - 1]}`;
+    }
+    if (citation.json_paths && citation.json_paths.length) {
+      return citation.json_paths.join(", ");
+    }
+    return "document";
+  }
+
+  function render(payload) {
+    const m = payload.metadata;
+    summaryEl.hidden = false;
+    summaryEl.textContent =
+      `${m.questions_processed} question(s) · ${m.answered} answered · ` +
+      `${m.not_found} not found · ${m.failed} failed · ` +
+      `${m.chunk_count} chunks · ${Math.round(m.processing_time_ms)} ms · ` +
+      `${m.usage.total_tokens} tokens · $${m.usage.estimated_cost_usd.toFixed(6)}` +
+      (m.document_cache_hit ? " · cached index" : "");
+
+    resultsEl.innerHTML = payload.results.map((r) => {
+      const cites = (r.citations || []).map((c) =>
+        `<div class="cite"><b>${text(c.source)}</b> — ${text(locator(c))}` +
+        (c.section ? ` · ${text(c.section)}` : "") +
+        `<br>${text(c.snippet)}</div>`
+      ).join("");
+      return `<div class="card">
+        <div class="q">${text(r.question)}</div>
+        <div><span class="tag ${r.status}">${text(r.status.replace("_", " "))}</span></div>
+        <div class="a">${text(r.answer)}</div>
+        ${cites ? `<div class="cites">${cites}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    errorEl.hidden = true;
+    summaryEl.hidden = true;
+    resultsEl.innerHTML = "";
+    button.disabled = true;
+    statusEl.textContent = "Reading document and answering…";
+
+    const started = performance.now();
+    try {
+      const response = await fetch("/api/v1/qa", { method: "POST", body: new FormData(form) });
+      const payload = await response.json();
+      if (!response.ok) {
+        showError(payload?.error?.message || `Request failed (${response.status}).`, payload?.request_id);
+        return;
+      }
+      render(payload);
+    } catch (err) {
+      showError("Could not reach the service: " + err.message);
+    } finally {
+      button.disabled = false;
+      statusEl.textContent = `Completed in ${Math.round(performance.now() - started)} ms`;
+    }
+  });
+</script>
+</body>
+</html>
