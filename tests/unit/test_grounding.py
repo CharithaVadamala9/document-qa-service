@@ -74,3 +74,52 @@ def test_duplicates_are_reported_once() -> None:
 def test_empty_citation_text_flags_every_figure() -> None:
     # An answer citing nothing has nothing supporting its numbers.
     assert unsupported_figures("Retained 35 days.", cited_text="", question="q") == ["35"]
+
+
+class TestIdentifiersAreNotQuantities:
+    """A label containing digits is not a claim about a number.
+
+    Control ids are the clearest case: a model naming CC6.6.1 is reporting what
+    it read, and flagging "6.6" and "1" as invented figures discarded correct
+    answers wholesale.
+    """
+
+    @pytest.mark.parametrize(
+        ("answer", "cited"),
+        [
+            ("Control CC6.6.1 had no exceptions.", "The system is protected by security groups."),
+            ("The report references ISO27001 certification.", "External assessments occur."),
+            ("Systems are hardened to CIS benchmarks.", "hardened based on CIS benchmarks"),
+            ("The 7th Cross address is in scope.", "No. 7, 7th Cross, Hebbal Ganganagar Layout"),
+        ],
+    )
+    def test_identifiers_and_ordinals_are_ignored(self, answer: str, cited: str) -> None:
+        assert unsupported_figures(answer, cited_text=cited, question="q") == []
+
+    def test_a_hyphenated_quantity_is_still_a_claim(self) -> None:
+        # "35-day" has no letter touching a digit, so it stays a quantity.
+        assert unsupported_figures(
+            "A 90-day retention applies.", cited_text="retention is thirty five days", question="q"
+        ) == ["90"]
+
+
+class TestSpelledNumbers:
+    """Compliance prose spells figures out; the same value written in digits is
+    not an invention."""
+
+    @pytest.mark.parametrize(
+        ("answer", "cited"),
+        [
+            ("Backups are retained for 35 days.", "retained for thirty five days"),
+            ("Notification occurs within 72 hours.", "within seventy-two hours of confirmation"),
+            ("Retention is 90 days.", "retained for ninety days"),
+            ("There are 15 business days to report.", "within fifteen business days"),
+        ],
+    )
+    def test_word_forms_count_as_support(self, answer: str, cited: str) -> None:
+        assert unsupported_figures(answer, cited_text=cited, question="q") == []
+
+    def test_a_different_number_is_still_caught(self) -> None:
+        assert unsupported_figures(
+            "Retained for 90 days.", cited_text="retained for thirty five days", question="q"
+        ) == ["90"]
