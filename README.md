@@ -1,8 +1,17 @@
-# docqa
+# Document QA Service
 
 Answers a list of questions from a single PDF or JSON document, using retrieval-augmented generation. Retrieved chunks are the only context given to `gpt-4o-mini`, and any question the document does not support comes back as `not_found` rather than a guess.
 
 ---
+
+## Quick start
+
+```bash
+cp .env.example .env      # then put your OPENAI_API_KEY in it
+docker compose up --build
+```
+
+Open http://localhost:8000 and upload a document plus a questions file. The detailed [Setup](#setup) section below covers running without Docker.
 
 ## Overview
 
@@ -16,10 +25,16 @@ Upload two files — a document (PDF or JSON) and a JSON list of questions — a
 ## Architecture
 
 ```
-Upload → Validate → Detect type → Parse → Clean → Segment → Chunk
-                                                              ↓
-                    Grounded answer + citations ← gpt-4o-mini ←┘ Embed → FAISS → MMR retrieve
+Document  →  Validate  →  Parse  →  Clean  →  Chunk  →  Embed  →  FAISS
+                                                                     │
+                                                                     ▼
+Questions →  Embed  →  MMR retrieval  →  Retrieved context  →  gpt-4o-mini
+                                                                     │
+                                                                     ▼
+                                          Grounding validation  →  Answers + citations
 ```
+
+The document path runs once per request and is cached by content hash. The question path runs once per question, concurrently under a semaphore.
 
 | Module | Responsibility |
 |---|---|
@@ -157,11 +172,13 @@ Open http://localhost:8000.
 ### Docker
 
 ```bash
-docker build -t docqa .
-docker run --env-file .env -p 8000:8000 docqa
+docker build -t document-qa-service .
+docker run --rm --env-file .env -p 8000:8000 document-qa-service
 ```
 
-or `docker compose up --build`.
+or `docker compose up --build`, which builds the same image and tags it `docqa:latest`.
+
+The image is multi-stage: dependencies resolve in a builder stage, and the runtime stage carries no build tools or package manager. It runs as a non-root user (`uid 1001`), and the tiktoken vocabulary is baked in at build time so a network-restricted container does not fail its first request.
 
 ### Test
 
@@ -197,19 +214,19 @@ Two datasets, deliberately of opposite shape, so a change has to hold on both:
 | Bright Defense, 37pp | prose-heavy | 93% (from 60%) | 89–94% (from 67%) |
 | Zintlr, 55pp | 34 dense control tables | 88% | 87–90% |
 
-Recall is deterministic and reproduces exactly; it needs no LLM. Status accuracy is a range over repeated runs because the generation step is sampled — a single figure there would misrepresent a number that moves by several points on identical input. Judge a change by whether it clears the range, not the midpoint.
+Recall is deterministic and reproduces exactly. Status accuracy is a **range** because generation is sampled: a single figure would misrepresent a number that moves several points on identical input. Judge a change by whether it clears the range, not the midpoint.
 
-Questions that fail with an `upstream_error` are excluded from the denominator and reported separately. Scoring an unreachable model as a wrong answer once turned rate limiting into an apparent 45-point quality collapse, and three conclusions were drawn from it before the cause was found.
+Questions that fail with an `upstream_error` are excluded from the denominator and reported separately — scoring an unreachable model as a wrong answer once made rate limiting look like a 45-point quality collapse.
 
-The first gap was found by building the harness before chasing it. Three separate causes — bold headings missed by size-only detection, chunks too coarse, and a prompt that refused on partial evidence — which only separated because retrieval and generation are scored independently.
+The Bright Defense gap had three independent causes — bold headings missed by size-only detection, chunks too coarse, and a prompt that refused on partial evidence — which separated only because retrieval and generation are scored apart.
 
-The second dataset has already paid for itself by **rejecting** a change. Excluding repeated table headers and a document-wide section label from the embedded text looked well-motivated: 59 of 80 chunks began with byte-identical text, which should collapse them into one cluster. It held on the prose document and cost 11 points of recall on the table-heavy one. The repeated header turns out to carry signal as well as noise — the column names describe what the table holds, and questions about *test results* or *control activities* match against them. Reverted. A single-document gate would have kept it.
+The second dataset earned its place by **rejecting** a change. Excluding repeated table headers from the embedded text looked well-motivated: 59 of 80 chunks began with byte-identical text. It held on the prose document and cost 11 points of recall on the table-heavy one, because the column names describe what the table holds, so questions about *test results* or *control activities* match against them. Reverted — a single-document gate would have kept it.
 
-A third reported category, **grounded but less precise**, is advisory and never scored. It flags an answer that is properly supported by what it cites but drawn from a weaker source than the best one in the document — for instance answering "who can modify security group rules" from a general statement about the IT Security team rather than the specific control that names the IT Head. That is not a correctness failure, and collapsing it into one would hide the distinction between *wrong* and *imprecise*.
+A third category, **grounded but less precise**, is advisory and never scored. It flags an answer properly supported by what it cites but drawn from a weaker source than the best available — answering "who can modify security group rules" from a general statement about the IT Security team rather than the control naming the IT Head. Scoring it as a failure would hide the distinction between *wrong* and *imprecise*.
 
 The dataset points at a document that is **not committed** (`examples/*.pdf` is gitignored; it is a third-party file). Point `--document` at your own, or add a dataset of your own shape.
 
-**On RAGAS and similar frameworks:** worth adding as an opt-in extra, not as the gate. RAGAS scores faithfulness and answer relevancy well, but it is LLM-as-judge — non-deterministic, costed per run, and a heavy dependency tree. The harness here is deterministic and free for the retrieval half, which is what you want running on every commit. Its weakness is the converse: a substring check cannot see an answer that is fluent, cited, and subtly misstates the source. That is exactly what an LLM judge is good at, so the two are complements rather than alternatives.
+**On RAGAS and similar frameworks:** worth adding as an opt-in extra, not as the gate. RAGAS scores faithfulness and answer relevancy well, but it is LLM-as-judge — non-deterministic, costed per run, and a heavy dependency tree. This harness is deterministic and free for the retrieval half, which is what you want on every commit. Its weakness is the converse: a substring check cannot see an answer that is fluent, cited, and subtly misstates the source. The two are complements, not alternatives.
 
 ## Design decisions
 
@@ -219,15 +236,15 @@ The dataset points at a document that is **not committed** (`examples/*.pdf` is 
 
 **Why `text-embedding-3-small`** — ~$0.02 per 1M tokens. A 50-page report costs about $0.0006 to index, versus $0.004 for `-3-large`, for a marginal ranking gain on keyword-dense compliance prose.
 
-**Why token-aware chunking** — 500 tokens with 100 overlap. Character-based sizing makes the context budget unpredictable when packing five chunks into a prompt. 600 tokens fits a typical control description whole; smaller fragments it, larger dilutes the embedding.
+**Why token-aware chunking** — 500 tokens with 100-token overlap on prose. Character-based sizing makes the context budget unpredictable when packing ten chunks into a prompt; token-aware sizing makes it exact. 500 tokens is large enough to hold a typical control description whole — smaller fragments it, larger dilutes the embedding.
 
 **Why separate PDF and JSON handling** — they fail differently. PDFs need layout analysis: running headers stripped (otherwise a 50-page report yields ~50 near-duplicate chunks that crowd out real content), tables rendered as markdown rather than linearised into column soup, and headings recovered from font size. JSON needs the opposite: character-splitting it severs records mid-object, and flattening to `owner.contact` destroys the grouping that says which owner a contact belongs to. Records are rendered as indented text, ancestor scalars are inherited, and foreign keys are resolved to labels — `owner_id: 42` is unreachable by semantic search, `owner_id: 42 (Security Engineering)` is not.
 
-**Why overlap only on prose** — repeating a self-contained JSON record or table row gives it two nearly identical vectors, letting one record win two of five retrieval slots. Structured segments get header repetition instead: a split table repeats its column row, a split record repeats its title and ancestor context.
+**Why overlap only on prose** — repeating a self-contained JSON record or table row gives it two nearly identical vectors, letting one record win two of the ten retrieval slots. Structured segments get header repetition instead: a split table repeats its column row, a split record repeats its title and ancestor context.
 
 **Why MMR** — with overlapping chunks, plain top-k routinely returns several near-copies of one passage. MMR (`fetch_k=40`, `λ=0.5`) buys diversity with no extra API calls.
 
-**Why 500 tokens and top-10** — these are measured, not guessed. Against a public 37-page SOC 2 report, 600-token chunks at top-5 gave 73% retrieval recall; 500 at top-10 gives 93%. See `evals/`.
+**Why 500 tokens and top-10** — measured, not guessed. The original configuration was 600 tokens at top-5, which scored 73% retrieval recall against a public 37-page SOC 2 report. Halving the chunk and doubling `k` to **500/top-10** raised that to 93%, and it is what ships. Smaller chunks localise the evidence; a wider `k` compensates for the finer granularity without lengthening the prompt much, since each chunk is shorter. See `evals/` to re-run the sweep.
 
 **Why bounded concurrency** — questions run in parallel so 20 questions take roughly the time of the slowest, not the sum. A per-request semaphore stops one large question list from monopolising the quota; a global cap stops N concurrent requests multiplying into a rate-limit wall.
 
@@ -242,7 +259,9 @@ The retrieved chunks are the only source of truth. Three mechanisms enforce it:
 3. **An answer with no valid citation is downgraded to `not_found`.** This is what turns "please don't hallucinate" from a prompt request into an enforced invariant.
 4. **Figures are verified against the cited text.** If an answer asserts a number that appears in neither the extracts it cited nor the question, it is downgraded. A notification SLA of 24 hours where the document says 72 reads as authoritative and is wrong; this catches it deterministically, with no second model call. Disable with `VERIFY_NUMERIC_GROUNDING=false`.
 
-A question the extracts answer only in part returns the supported part with the gap stated, rather than a blank refusal — a flat `not_found` on a partially-answerable question throws away information the caller needs.
+**Partial answers are requested, not guaranteed.** The prompt instructs the model to answer the supported part and name the gap rather than refuse outright, because a flat `not_found` on a partially-answerable question throws away information the caller needs. It usually does. On list-style questions that name several items at once — "do you perform APM, EUM and DEM monitoring?" where the document covers only some — it still sometimes refuses the whole question instead of answering the covered part.
+
+No guardrail is involved; these never reach one. Two prompt revisions were written to fix it and measured on both eval datasets. Each fixed the target case and cost more elsewhere, so neither was kept, and the behaviour is recorded as a non-strict `xfail` in `tests/unit/test_answer_edge_cases.py` rather than described as solved.
 
 Unsupported questions return exactly:
 
@@ -285,7 +304,7 @@ Settings are cross-validated at startup: overlap must be smaller than chunk size
 - Blocking work (PyMuPDF parsing, FAISS operations) runs via `asyncio.to_thread`, so an ingest never stalls the event loop for other requests.
 - Indexes are cached by content hash, so re-asking against the same document skips parsing and embedding entirely. Concurrent requests for the same document share one build rather than each paying for it.
 
-Measured on the test fixture with fakes: a 6-question request re-run against the same document drops from 1,056 embedding tokens to 46 — only the query embeddings.
+Re-running a request against the same document bills only the query embeddings; the document's own embedding cost is paid once. `tests/unit/test_qa_service.py` and `tests/integration/test_api.py` assert that relationship directly rather than pinning a token count that would drift with the fixture.
 
 ## Observability
 
