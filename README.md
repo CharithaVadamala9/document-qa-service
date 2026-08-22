@@ -166,9 +166,9 @@ or `docker compose up --build`.
 ### Test
 
 ```bash
-pytest                        # 198 tests, no network, no API key
+pytest                        # 208 tests, no network, no API key
 pytest --cov=app              # 93% coverage
-pytest -m live                # optional: real API calls, needs a key
+pytest -m live                # optional: 12 tests, real API calls, needs a key
 ruff check app tests && ruff format --check app tests
 mypy app
 ```
@@ -194,8 +194,12 @@ Two datasets, deliberately of opposite shape, so a change has to hold on both:
 
 | Document | Shape | Retrieval recall@k | Status accuracy |
 |---|---|---|---|
-| Bright Defense, 37pp | prose-heavy | 93% (from 60%) | 94% (from 67%) |
-| Zintlr, 55pp | 34 dense control tables | 88% | 80% |
+| Bright Defense, 37pp | prose-heavy | 93% (from 60%) | 89–94% (from 67%) |
+| Zintlr, 55pp | 34 dense control tables | 88% | 87–90% |
+
+Recall is deterministic and reproduces exactly; it needs no LLM. Status accuracy is a range over repeated runs because the generation step is sampled — a single figure there would misrepresent a number that moves by several points on identical input. Judge a change by whether it clears the range, not the midpoint.
+
+Questions that fail with an `upstream_error` are excluded from the denominator and reported separately. Scoring an unreachable model as a wrong answer once turned rate limiting into an apparent 45-point quality collapse, and three conclusions were drawn from it before the cause was found.
 
 The first gap was found by building the harness before chasing it. Three separate causes — bold headings missed by size-only detection, chunks too coarse, and a prompt that refused on partial evidence — which only separated because retrieval and generation are scored independently.
 
