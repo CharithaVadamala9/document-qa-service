@@ -84,7 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging(settings)
 
     app = FastAPI(
-        title="docqa",
+        title="Document QA Service",
         version="0.1.0",
         summary=(
             "Answer questions from a PDF or JSON document using retrieval-augmented generation."
