@@ -183,14 +183,16 @@ The image is multi-stage: dependencies resolve in a builder stage, and the runti
 ### Test
 
 ```bash
-pytest                        # 208 tests, no network, no API key
-pytest --cov=app              # 93% coverage
-pytest -m live                # optional: 12 tests, real API calls, needs a key
+pytest                        # deterministic and offline: no network, no API key
+pytest --cov=app              # coverage report
+pytest -m live                # optional: real provider calls, needs a key
 ruff check app tests && ruff format --check app tests
 mypy app
 ```
 
-**No test in the default suite requires an API key or network access.** The embedder and the model are injected as fakes through FastAPI's dependency overrides. Tests marked `live` are deselected by default: model behaviour is probabilistic and cannot be a build gate.
+**The default suite is deterministic and fully offline** — no test in it requires an API key or network access. The embedder and the model are injected as fakes through FastAPI's dependency overrides, so results do not vary between runs.
+
+Tests marked `live` are deselected by default and make **real provider calls**, which cost money and need `OPENAI_API_KEY`. They are excluded from the default suite deliberately: model behaviour is probabilistic and cannot be a build gate.
 
 ## Evaluation
 
@@ -244,7 +246,7 @@ The dataset points at a document that is **not committed** (`examples/*.pdf` is 
 
 **Why MMR** — with overlapping chunks, plain top-k routinely returns several near-copies of one passage. MMR (`fetch_k=40`, `λ=0.5`) buys diversity with no extra API calls.
 
-**Why 500 tokens and top-10** — measured, not guessed. The original configuration was 600 tokens at top-5, which scored 73% retrieval recall against a public 37-page SOC 2 report. Halving the chunk and doubling `k` to **500/top-10** raised that to 93%, and it is what ships. Smaller chunks localise the evidence; a wider `k` compensates for the finer granularity without lengthening the prompt much, since each chunk is shorter. See `evals/` to re-run the sweep.
+**Why 500 tokens and top-10** — measured, not guessed. The original configuration was 600 tokens at top-5, which scored 73% retrieval recall against a public 37-page SOC 2 report. Reducing the chunk size from 600 to 500 tokens and increasing `k` from 5 to 10 raised retrieval recall to 93%, and that is what ships. Smaller chunks localise the evidence; a wider `k` compensates for the finer granularity without lengthening the prompt much, since each chunk is shorter. See `evals/` to re-run the sweep.
 
 **Why bounded concurrency** — questions run in parallel so 20 questions take roughly the time of the slowest, not the sum. A per-request semaphore stops one large question list from monopolising the quota; a global cap stops N concurrent requests multiplying into a rate-limit wall.
 
@@ -252,7 +254,7 @@ The dataset points at a document that is **not committed** (`examples/*.pdf` is 
 
 ## Grounding and not-found behaviour
 
-The retrieved chunks are the only source of truth. Three mechanisms enforce it:
+The retrieved chunks are the only source of truth. Four mechanisms enforce it:
 
 1. **The model cites by extract number, never by page.** It sees `[1]`, `[2]`, `[3]`; page numbers and JSON paths are attached afterwards from chunk metadata. A fabricated page number is structurally impossible.
 2. **Out-of-range indices are discarded.** The source list is model output and is treated as untrusted.
