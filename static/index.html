@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>docqa — document question answering</title>
+<title>Document QA Service</title>
 <style>
   /* Light theme only, by design: a single deliberate palette rather than two
      half-tuned ones. Sizing is fluid so the card grows with the viewport. */
@@ -216,8 +216,8 @@
 <body>
 <main>
   <header>
-    <h1>docqa</h1>
-    <p>Answers questions using only the document you upload. Unsupported questions return <code>not_found</code>.</p>
+    <h1>Document QA Service</h1>
+    <p>Ask questions about a PDF or JSON document and get grounded answers with source citations.</p>
   </header>
 
   <section class="card">
@@ -241,10 +241,10 @@
                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
           </svg>
-          <h2>Drag and drop the questions</h2>
+          <h2>Drag and drop the questions file</h2>
           <div class="or">or</div>
           <button class="browse" type="button">Browse</button>
-          <div class="accepts">Supported files: JSON array of questions</div>
+          <div class="accepts">Supported file: JSON containing a list of questions</div>
           <div class="zone-error" hidden></div>
           <input type="file" accept=".json,application/json" />
         </div>
@@ -497,8 +497,15 @@
     for (const result of payload.results) {
       const card = el("div", "card result");
       card.append(el("div", "q", result.question));
-      card.append(el("span", `tag ${result.status}`, result.status.replace("_", " ")));
-      card.append(el("div", "a", result.answer));
+      // Display only. The status value and the answer text are the API's, and
+      // the class name still keys off the raw status so the styling matches.
+      const notFound = result.status === "not_found";
+      const label = notFound ? "not found in document" : result.status.replace("_", " ");
+      const body = notFound
+        ? "The answer was not found in the provided document."
+        : result.answer;
+      card.append(el("span", `tag ${result.status}`, label));
+      card.append(el("div", "a", body));
 
       if (result.citations && result.citations.length) {
         const cites = el("div", "cites");

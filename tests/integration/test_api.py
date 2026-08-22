@@ -296,7 +296,7 @@ class TestOperationalEndpoints:
         response = await client.get("/")
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "docqa" in response.text
+        assert "Document QA Service" in response.text
 
     async def test_openapi_schema_is_valid(self, client: httpx.AsyncClient) -> None:
         schema = (await client.get("/openapi.json")).json()
