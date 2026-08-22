@@ -6,6 +6,9 @@ nothing to a reader, who sees source names and page numbers instead. The model
 nonetheless cites them inline ("...secured areas of the facility (Extract 1,
 CC6.4.1)"), so they are removed here.
 
+Markdown emphasis is removed for the same reason: ``answer`` is specified as
+prose, and a client that renders it as text shows the delimiters literally.
+
 Only the prose is edited. The ``sources`` list the model returned is untouched,
 so citation resolution still works off the original indices.
 """
@@ -31,6 +34,27 @@ _INLINE = re.compile(
 _SPACE_BEFORE_PUNCT = re.compile(r"\s+([.,;:!?])")
 _REPEATED_SPACE = re.compile(r"[ \t]{2,}")
 _EMPTY_PARENS = re.compile(r"[(\[]\s*[)\]]")
+
+# Emphasis only counts when a delimiter hugs the text it wraps, which is what
+# separates "**bold**" from "2 * 3". Underscores additionally require a word
+# boundary, or identifiers like max_retry_count lose their middle.
+_WORD = r"[^\W_]"
+_MARKDOWN = (
+    re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", re.DOTALL),
+    re.compile(rf"(?<!{_WORD})__(?=\S)(.+?)(?<=\S)__(?!{_WORD})", re.DOTALL),
+    re.compile(r"\*(?=\S)([^*\n]+?)(?<=\S)\*"),
+    re.compile(rf"(?<!{_WORD})_(?=\S)([^_\n]+?)(?<=\S)_(?!{_WORD})"),
+    re.compile(r"`(?=\S)([^`\n]+?)(?<=\S)`"),
+)
+_HEADING = re.compile(r"(?m)^\s{0,3}#{1,6}[ \t]+")
+
+
+def strip_markdown_emphasis(answer: str) -> str:
+    """Remove markdown emphasis, inline code and heading markers from prose."""
+    cleaned = _HEADING.sub("", answer)
+    for pattern in _MARKDOWN:
+        cleaned = pattern.sub(r"\1", cleaned)
+    return cleaned
 
 
 def strip_extract_references(answer: str) -> str:

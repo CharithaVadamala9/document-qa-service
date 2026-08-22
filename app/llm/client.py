@@ -22,7 +22,7 @@ from app.core.logging import Timer, get_logger
 from app.core.models import NOT_FOUND_TEXT, AnswerStatus, Citation, TokenUsage
 from app.core.retry import is_fatal, retry_policy
 from app.llm.grounding import unsupported_figures
-from app.llm.postprocess import strip_extract_references
+from app.llm.postprocess import strip_extract_references, strip_markdown_emphasis
 from app.llm.prompts import SYSTEM_PROMPT, build_user_prompt
 from app.retrieval.vector_store import ScoredChunk
 
@@ -124,9 +124,10 @@ class OpenAIAnswerGenerator:
         if parsed.status == "not_found" or not parsed.answer.strip():
             return _not_found(timer.ms, usage)
 
-        # Stripped before the figure check runs: "(Extract 1)" carries a digit
-        # that would otherwise be tested as a claim about the document.
-        answer = strip_extract_references(parsed.answer)
+        # Both run before the figure check: "(Extract 1)" carries a digit that
+        # would otherwise be tested as a claim about the document, and emphasis
+        # has to go first or "**(Extract 1)**" leaves its delimiters behind.
+        answer = strip_extract_references(strip_markdown_emphasis(parsed.answer))
         if not answer:
             return _not_found(timer.ms, usage)
         if self._settings.verify_numeric_grounding:
